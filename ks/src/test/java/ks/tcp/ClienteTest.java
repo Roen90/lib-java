@@ -1,46 +1,256 @@
 package ks.tcp;
 
 import junit.framework.TestCase;
+import ks.log;
 
-public class ClienteTest extends TestCase {
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.Timer;
+import java.util.TimerTask;
 
-    public void testSetTimeOut() throws Exception {
+public class ClienteTest extends TestCase implements Tcp{
+    private Socket VMnetCliente;
 
+    protected int VMintPuerto;
+    private int VMintReconectar;
+    private static int VMintTimeOut;
+
+    protected String VMstrIP;
+
+    private boolean VMblnSalir;
+    private boolean VMblnReconectar;
+
+    private InputStream VMobjEntrada;
+    private OutputStream VMobjSalida;
+
+    private log VMobjDepuracion;
+
+    private EventosTCP VMobjEventos;
+
+    private Thread VMhiloEscuchar;
+    private Thread VMhiloEnviar;
+
+    private ClienteTest VMtcpCliente;
+
+    private Timer VMtmrReconectar;
+
+    private Queue<String> VMcolaEnviar;
+
+    public ClienteTest() {
+        VMintPuerto = 0;
+        VMblnSalir = false;
+        VMobjDepuracion = log.getInstancia();
+        VMintTimeOut = 0;
+        VMhiloEscuchar = new Thread();
+        VMtcpCliente = this;
+        VMintReconectar = 30000;
+        VMcolaEnviar = new LinkedList<String>();
+        VMhiloEnviar = new Thread();
+    }
+
+    private void activiarPropiedades() throws IOException {
+        VMnetCliente.setTcpNoDelay(true);
+        VMnetCliente.setSoTimeout(VMintTimeOut);
+        VMnetCliente.setPerformancePreferences(1, 0, 0);
+        VMnetCliente.setKeepAlive(true);
+        VMnetCliente.setReuseAddress(false);
+        VMobjEntrada = VMnetCliente.getInputStream();
+        VMobjSalida = VMnetCliente.getOutputStream();
+        escuchar();
     }
 
     public void testSetCliente() throws Exception {
+        Socket conexion = null;
+        try {
+            VMnetCliente = conexion;
+            this.activiarPropiedades();
+            /*if (VMobjEventos != null) {
+                VMobjEventos.conexionEstablecida(this);
+            }*/
+        } catch (Exception ex) {
+            if (VMobjEventos != null) {
+                VMobjEventos.errorConexion(ex.getMessage());
+            }
+        }
+    }
+
+    @Override
+    public void setIP(String IP) {
 
     }
 
-    public void testSetPuerto() throws Exception {
+    @Override
+    public void setPuerto(int Puerto) {
 
     }
 
-    public void testSetIP() throws Exception {
+    @Override
+    public void setEventos(EventosTCP eventos) {
 
     }
 
-    public void testSetEventos() throws Exception {
+    @Override
+    public void conectar() {
+        try {
+            VMblnReconectar = true;
+            VMblnSalir = false;
+            VMnetCliente = new Socket(VMstrIP, VMintPuerto);
+            this.activiarPropiedades();
+            /*if (VMobjEventos != null) {
+                VMobjEventos.conexionEstablecida(this);
+            }*/
+        } catch (Exception ex) {
+            if (VMobjEventos != null) {
+                VMobjEventos.errorConexion(ex.getMessage());
+            }
+            reconectar();
+        }
+    }
+
+    @Override
+    public void enviar(String mensaje) {
+        mensaje = "";
+
+        VMcolaEnviar.add(mensaje);
+        if (!VMhiloEnviar.isAlive())
+        {
+            VMhiloEnviar = new Thread()
+            {
+                public void run()
+                {
+                    String VLstrMensaje;
+                    do {
+                        synchronized (VMcolaEnviar)
+                        {
+                            VLstrMensaje = VMcolaEnviar.poll();
+                        }
+                        if (VMobjSalida != null) {
+                            if (VMnetCliente.isConnected()) {
+                                try {
+                                    VMobjSalida.write(VLstrMensaje.getBytes());
+                                    VMobjSalida.flush();
+                                } catch (Exception ex) {
+                                    if (VMobjEventos != null) {
+                                        VMobjEventos.errorConexion("Problema al enviar datos: " + ex.getMessage());
+                                    }
+                                    if (VMblnReconectar) {
+                                        reconectar();
+                                    }
+                                    cerrar();
+                                }
+                            }
+                        }
+                    }while (VMcolaEnviar.size() > 0);
+                }
+            };
+            VMhiloEnviar.start();
+        }
 
     }
 
-    public void testSetReconectar() throws Exception {
-
+    private void escuchar() {
+        if (!VMhiloEscuchar.isAlive()) {
+            while(VMobjEntrada == null)
+            {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            VMhiloEscuchar = new Thread() {
+                @Override
+                public void run() {
+                    byte VLbyteMensaje[], VLbyteTemp;
+                    int VLintFaltantes;
+                    String VLstrMensaje = "";
+                    do {
+                        try {
+                            VLbyteMensaje = new byte[1];
+                            VMobjEntrada.read(VLbyteMensaje, 0, 1);
+                            VLintFaltantes = VMobjEntrada.available();
+                            if (VLintFaltantes > 0)
+                            {
+                                VLbyteTemp = VLbyteMensaje[0];
+                                VLbyteMensaje = new byte[VLintFaltantes + 1];
+                                VLbyteMensaje[0] = VLbyteTemp;
+                                VMobjEntrada.read(VLbyteMensaje, 1, VLintFaltantes);
+                                VLstrMensaje = new String(VLbyteMensaje,0,VLbyteMensaje.length, "ISO-8859-1");
+                            } else if (VLbyteMensaje[0] == 0) {
+                                if (VMobjEventos != null) {
+                                    VMobjEventos.errorConexion("Se desconecto por algun motivo");
+                                }
+                                VMblnSalir = true;
+                                break;
+                            }
+                            VLintFaltantes = 0;
+                            if (VMobjEventos != null) {
+                                VMobjEventos.datosRecibidos(VLstrMensaje, VLbyteMensaje, VMtcpCliente);
+                            }
+                        } catch (Exception ex) {
+                            if (VMobjEventos != null) {
+                                VMobjEventos.errorConexion("Problema al recibir datos: " + ex.getMessage() + "\n" + ex.getStackTrace()[0].toString());
+                            }
+                            VMblnSalir = true;
+                        }
+                    } while (!VMblnSalir);
+                    if (VMblnReconectar) {
+                        reconectar();
+                    }
+                    cerrar();
+                }
+            };
+            VMhiloEscuchar.setDaemon(false);
+            VMhiloEscuchar.setName("Cliente: " + VMnetCliente.getLocalAddress().toString() + ":" + VMnetCliente.getPort());
+            VMhiloEscuchar.start();
+        }
     }
 
-    public void testConectar() throws Exception {
-
+    public void reconectar() {
+        if (VMtmrReconectar == null) {
+            VMtmrReconectar = new Timer();
+            VMtmrReconectar.scheduleAtFixedRate(new TimerTask() {
+                @Override
+                public void run() {
+                    VMobjDepuracion.agregarMensaje("Reconectando con : " + VMstrIP + ":" + VMintPuerto);
+                    conectar();
+                    if (VMnetCliente != null) {
+                        if (VMnetCliente.isConnected()) {
+                            VMtmrReconectar.cancel();
+                            VMtmrReconectar = null;
+                        }
+                    }
+                }
+            }, VMintReconectar, VMintReconectar);
+        }
     }
 
-    public void testEnviar() throws Exception {
+    public void cerrar() {
+        VMblnSalir = true;
+        VMblnReconectar = false;
+        try {
+            VMobjEntrada.close();
+        } catch (Exception ex) {
 
-    }
+        }
+        try {
+            VMobjSalida.close();
+        } catch (Exception ex) {
 
-    public void testCerrar() throws Exception {
+        }
+        try {
+            VMnetCliente.close();
+        } catch (Exception ex) {
 
-    }
-
-    public void testReconectar() throws Exception {
-
+        }
+        VMnetCliente = null;
+        VMobjEntrada = null;
+        VMobjSalida = null;
+        VMobjDepuracion.agregarMensaje("Se cerro la conexion con: " + VMstrIP + ":" + VMintPuerto);
+        //VMobjEventos.cerrarConexion(this);
     }
 }

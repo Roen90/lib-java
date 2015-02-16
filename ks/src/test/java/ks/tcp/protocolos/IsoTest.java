@@ -38,6 +38,20 @@ public class IsoTest extends TestCase {
     }
 
     public void testMapeo() throws Exception {
+        String VLstrRespuesta = "";
+        String Mapeo = "";
+        int i, VLintValor, VLintLongitud;
+
+        if (Mapeo.startsWith("1")) {
+            VLintLongitud = Mapeo.length();
+        } else {
+            VLintLongitud = Mapeo.length() / 2;
+        }
+        for (i = 0; i < VLintLongitud; i += 4) {
+            VLintValor = Integer.parseInt(Mapeo.substring(i, i + 4), 2);
+            VLstrRespuesta += Integer.toHexString(VLintValor);
+        }
+        System.out.println(VLstrRespuesta.toUpperCase());
 
     }
 
