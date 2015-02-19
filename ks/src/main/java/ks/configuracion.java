@@ -34,9 +34,9 @@ public class configuracion {
                 configuracion.getRuta();
             }
             if (VMstrPath.contains("/")) {
-                VMstrPathConf = VMstrPath + "config/" + VMstrConfiguracion + ".properties";
+                VMstrPathConf = VMstrPath + "config/" + VMstrConfiguracion + ".xml";
             } else {
-                VMstrPathConf = VMstrPath + "config\\" + VMstrConfiguracion + ".properties";
+                VMstrPathConf = VMstrPath + "config\\" + VMstrConfiguracion + ".xml";
             }
         }
         return VMstrPathConf;
